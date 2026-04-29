@@ -1,11 +1,11 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const resumeText = body.resumeText;
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       // Mock response
       await new Promise(r => setTimeout(r, 1500));
       return Response.json({
@@ -15,16 +15,16 @@ export async function POST(req: Request) {
       });
     }
 
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const msg = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20240620',
-      max_tokens: 1024,
-      system: 'You are an expert ATS and technical recruiter. Analyze the resume. Respond ONLY with a valid JSON format containing: score (number 0-100), skillGaps (array of strings), suggestions (array of strings).',
-      messages: [{ role: 'user', content: `Analyze this resume:\n\n${resumeText}` }]
-    });
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    
+    const prompt = `System: You are an expert ATS and technical recruiter. Analyze the resume. Respond ONLY with a valid JSON format containing: score (number 0-100), skillGaps (array of strings), suggestions (array of strings).\n\nUser: Analyze this resume:\n\n${resumeText}`;
+    const result = await model.generateContent(prompt);
 
-    const content = msg.content[0].type === 'text' ? msg.content[0].text : '{}';
-    return Response.json(JSON.parse(content));
+    const content = result.response.text();
+    // Clean potential markdown blocks
+    const cleanContent = content.replace(/```json\n|\n```/g, '');
+    return Response.json(JSON.parse(cleanContent));
   } catch {
     return Response.json({ error: 'Analysis failed' }, { status: 500 });
   }
